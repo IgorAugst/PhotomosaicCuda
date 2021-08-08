@@ -14,23 +14,43 @@ using namespace cv;
 
 #define MAX 32
 
+typedef struct ImageData {
+	string name;
+	int gray;
+	int R;
+	int G;
+	int B;
+};
+
+
 __global__ void grayAvrgKernel(unsigned char* input, int width, int height, int colorWidthStep) {
 	
 }
 
 void grayAvrg(Mat* image, int bx, int by) {
+	dim3 threads(MAX, MAX);
 	dim3 blocks(0, 0);
 	blocks.x = ceil((float)image->rows / (float)MAX);
 	blocks.y = ceil((float)image->cols / (float)MAX);
 
 	if (bx > blocks.x) {
 		blocks.x = bx;
+		threads.x = ceil((float)image->rows / (float)blocks.x);
 	}
 
 	if (by > blocks.y) {
 		blocks.y = by;
+		threads.y = ceil((float)image->cols / (float)blocks.y);
 	}
 	
+	unsigned char* imDevice;
+	int size = image->rows * image->cols;
+
+	cudaMalloc(&imDevice, size);
+	cudaMemcpy(imDevice, image->ptr(), size, cudaMemcpyHostToDevice);
+
+	grayAvrg << <blocks, threads >> > (imDevice, image.rows, image.cols, image.step);
+
 }
 
 int main(int argc, char** argv) {
