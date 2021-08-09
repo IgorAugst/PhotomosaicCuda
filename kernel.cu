@@ -1,5 +1,6 @@
 ﻿#include "cuda_runtime.h"
 #include "device_launch_parameters.h"
+#include "preProcess.h"
 
 #include <stdio.h>
 #include <iostream>
@@ -13,15 +14,6 @@ using namespace std;
 using namespace cv;
 
 #define MAX 32
-
-typedef struct ImageData {
-	string name;
-	int gray;
-	int R;
-	int G;
-	int B;
-};
-
 
 __global__ void grayAvrgKernel(unsigned char* input, int width, int height, int colorWidthStep) {
 	
