@@ -16,3 +16,5 @@ typedef struct ImageList {
 	ImageData* image;
 	int n;
 };
+
+ImageList* readImages(int quant, string path);

@@ -7,7 +7,6 @@
 #include <math.h>
 
 #include <opencv2/core.hpp>
-#include <opencv2/core/cuda.hpp>
 #include <opencv2/imgcodecs.hpp>
 
 using namespace std;
@@ -41,7 +40,7 @@ void grayAvrg(Mat* image, int bx, int by) {
 	cudaMalloc(&imDevice, size);
 	cudaMemcpy(imDevice, image->ptr(), size, cudaMemcpyHostToDevice);
 
-	grayAvrg << <blocks, threads >> > (imDevice, image.rows, image.cols, image.step);
+	grayAvrgKernel << <blocks, threads >> > (imDevice, image->rows, image->cols, image->step);
 
 }
 
@@ -51,13 +50,13 @@ int main(int argc, char** argv) {
 		return 1;
 	}
 
+	string sr = argv[1];
+
 	Mat image = imread(argv[1]);
 
 	if (image.empty()) {
 		cout << "imagem não encontrada" << endl;
 		return 1;
 	}
-
-	
 
 }
