@@ -59,4 +59,16 @@ int main(int argc, char** argv) {
 		return 1;
 	}
 
+	ImageList* imlist = processImage("D:\\igora\\Documents\\Code\\Photomosaic\\testes");
+	
+	bool status = saveCache(imlist);
+
+	cout << (status ? "salvo" : "erro") << endl;
+	
+	free(imlist->image);
+	free(imlist);
+
+	imlist = readCache();
+
+	cout << (imlist != NULL ? "lido" : "erro") << endl;
 }

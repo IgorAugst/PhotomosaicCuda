@@ -3,8 +3,10 @@
 
 using namespace std;
 
+#define MAXNAME 100
+
 typedef struct ImageData {
-	string name;
+	char name[MAXNAME];
 	int gray;
 	int R;
 	int G;
@@ -17,4 +19,10 @@ typedef struct ImageList {
 	int n;
 };
 
-ImageList* readImages(int quant, string path);
+ImageList* processImage(string path);
+
+bool saveCache(ImageList* imlist);
+
+void insertionSort(ImageList* imlist);
+
+ImageList* readCache();
