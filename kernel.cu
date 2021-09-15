@@ -182,7 +182,9 @@ void averageTest() {
 
 	cudaDeviceSynchronize();
 
-	printf("B: %d, G: %d, R: %d", values[0].r, values[0].g, values[0].b);
+	printf("R: %d, G: %d, B: %d", values[0].r, values[0].g, values[0].b);
+
+	waitKey(0);
 
 }
 
