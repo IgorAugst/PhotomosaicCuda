@@ -21,82 +21,11 @@ typedef struct RGB {
 	int b;
 };
 
-__global__ void grayAvrgTestLine(unsigned char* input, int colorWidthStep, int n) {
-	int id = threadIdx.x;
-	int step = 1;
-	int numThread = blockDim.x;
-	int line = blockIdx.x;
+typedef struct imageBlock {
+	char name[MAXNAME];
+};
 
-	while (numThread > 0) {
-		if (id < numThread) {
-			int first = id * step * 2;
-			int sec = first + step;
-
-			if (first < n && sec < n) {
-				const int pix1 = line * colorWidthStep + (3 * first);
-				const int pix2 = line * colorWidthStep + (3 * sec);
-				
-				int blue1 = input[pix1];
-				int green1 = input[pix1 + 1];
-				int red1 = input[pix1 + 2];
-
-				int blue2 = input[pix2];
-				int green2 = input[pix2 + 1];
-				int red2 = input[pix2 + 2];
-
-				input[pix1] = (blue1 + blue2);
-				input[pix1 + 1] = (green1 + green2);
-				input[pix1 + 2] = (red1 + red2);
-				
-			}
-		}
-
-		step *= 2;
-		numThread % 2 == 0 || numThread == 1 ? numThread /= 2 : numThread = (numThread + 1) / 2;
-	}
-
-	__syncthreads();
-}
-
-__global__ void grayAvrgTestRow(unsigned char* input, int colorWidthStep, int n, int* resp) {
-	int id = threadIdx.x;
-	int step = 1;
-	int numThread = blockDim.x;
-	int row = blockIdx.x;
-
-	while (numThread > 0) {
-		if (id < numThread) {
-			int first = id * step * 2;
-			int sec = first + step;
-
-			if (first < n && sec < n) {
-				const int pix1 = first * colorWidthStep + (3 * row);
-				const int pix2 = sec * colorWidthStep + (3 * row);
-
-				int blue1 = input[pix1];
-				int green1 = input[pix1 + 1];
-				int red1 = input[pix1 + 2];
-
-				int blue2 = input[pix2];
-				int green2 = input[pix2 + 1];
-				int red2 = input[pix2 + 2];
-
-				input[pix1] = (blue1 + blue2);
-				input[pix1 + 1] = (green1 + green2);
-				input[pix1 + 2] = (red1 + red2);
-
-			}
-		}
-
-		step *= 2;
-		numThread % 2 == 0 || numThread == 1 ? numThread /= 2 : numThread = (numThread + 1) / 2;
-	}
-
-	(*resp) = input[0];
-	__syncthreads();
-}
-
-__global__ void grayAvrgTestLineLoop(unsigned char* input, int colorWidthStep, int n, RGB *resp) {
+__global__ void grayAvrgTestLine(unsigned char* input, int colorWidthStep, int n, RGB *resp) {
 	int line = blockIdx.x;
 
 	for (int i = 0; i < n; i++) {
@@ -114,35 +43,61 @@ __global__ void grayAvrgTestLineLoop(unsigned char* input, int colorWidthStep, i
 
 }
 
-__global__ void grayAvrgKernel(unsigned char* input, int width, int height, int colorWidthStep) {
-	
-}
-
-void grayAvrgHelper(Mat* image, int bx, int by) {
-	dim3 threads(MAX, MAX);
-	dim3 blocks(0, 0);
-	blocks.x = ceil((float)image->rows / (float)MAX);
-	blocks.y = ceil((float)image->cols / (float)MAX);
-
-	if (bx > blocks.x) {
-		blocks.x = bx;
-		threads.x = ceil((float)image->rows / (float)blocks.x);
+__global__ void grayAvrgTestRow(RGB* resp, int n) {
+	for (int i = 1; i < n; i++) {
+		resp[0].r += resp[i].r;
+		resp[0].g += resp[i].g;
+		resp[0].b += resp[i].b;
 	}
 
-	if (by > blocks.y) {
-		blocks.y = by;
-		threads.y = ceil((float)image->cols / (float)blocks.y);
+	resp[0].r /= n;
+	resp[0].g /= n;
+	resp[0].b /= n;
+}
+
+__global__ void grayAvrgKernel(unsigned char* input, int colorWidthStep, int blockWidth, int blockHeight, int imgWidth, int imgHeight) {
+	int blockX = blockIdx.x;
+	int blockY = blockIdx.y;
+
+	int sx = blockX * blockWidth;
+	int sy = blockY * blockHeight;
+
+	int fx = sx + blockWidth;
+	int fy = sy + blockHeight;
+
+	if (fx > imgWidth) {
+		fx = imgWidth;
+	}
+
+	if (fy > imgHeight) {
+		fy = imgHeight;
 	}
 	
-	unsigned char* imDevice;
-	int size = image->rows * image->cols;
+	RGB color;
+	color.r = 0;
+	color.g = 0;
+	color.b = 0;
 
-	cudaMalloc(&imDevice, size);
-	cudaMemcpy(imDevice, image->ptr(), size, cudaMemcpyHostToDevice);
+	for (int y = 0; y < fy; y++) {
+		for (int x = 0; x < fx; x++) {
+			int index = y * colorWidthStep + (3 * x);
 
-	grayAvrgKernel << <blocks, threads >> > (imDevice, image->rows, image->cols, image->step);
+			color.b += input[index];
+			color.g += input[index + 1];
+			color.r += input[index + 2];
+		}
+	}
+
+	int n = imgWidth * imgHeight;
+
+	color.b /= n;
+	color.g /= n;
+	color.r /= n;
+
+	printf("R: %d, G: %d, B: %d", color.r, color.g, color.b);
 
 }
+
 
 void cacheTest() {
 	ImageList* imlist = processImage("D:\\igora\\Documents\\Code\\Photomosaic\\testes");
@@ -178,11 +133,21 @@ void averageTest() {
 
 	cudaMallocManaged(&values, sizeof(RGB) * image.rows);
 
-	grayAvrgTestLineLoop<<<blocks, 1>>>(dImage, image.step, image.cols, values);
+	grayAvrgTestLine<<<blocks, 1>>>(dImage, image.step, image.cols, values);
+
+	cudaDeviceSynchronize();
+
+	grayAvrgTestRow << <1, 1 >> > (values, image.rows);
 
 	cudaDeviceSynchronize();
 
 	printf("R: %d, G: %d, B: %d", values[0].r, values[0].g, values[0].b);
+
+	printf("\nteste loop\n");
+
+	grayAvrgKernel<<<1,1>>>(dImage, image.step, image.cols, image.rows, image.cols, image.rows);
+
+	cudaDeviceSynchronize();
 
 	waitKey(0);
 
