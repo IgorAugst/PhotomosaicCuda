@@ -55,9 +55,12 @@ __global__ void grayAvrgTestRow(RGB* resp, int n) {
 	resp[0].b /= n;
 }
 
-__global__ void grayAvrgKernel(unsigned char* input, int colorWidthStep, int blockWidth, int blockHeight, int imgWidth, int imgHeight) {
+__global__ void AvrgKernel(unsigned char* input, int colorWidthStep, int imgWidth, int imgHeight, ImageData* imData, int imgQuant) {
 	int blockX = blockIdx.x;
 	int blockY = blockIdx.y;
+
+	int blockWidth = imgWidth / gridDim.x;
+	int blockHeight = imgHeight / gridDim.y;
 
 	int sx = blockX * blockWidth;
 	int sy = blockY * blockHeight;
@@ -78,8 +81,8 @@ __global__ void grayAvrgKernel(unsigned char* input, int colorWidthStep, int blo
 	color.g = 0;
 	color.b = 0;
 
-	for (int y = 0; y < fy; y++) {
-		for (int x = 0; x < fx; x++) {
+	for (int y = sy; y < fy; y++) {
+		for (int x = sx; x < fx; x++) {
 			int index = y * colorWidthStep + (3 * x);
 
 			color.b += input[index];
@@ -88,14 +91,29 @@ __global__ void grayAvrgKernel(unsigned char* input, int colorWidthStep, int blo
 		}
 	}
 
-	int n = imgWidth * imgHeight;
+	int n = blockWidth * blockHeight;
 
 	color.b /= n;
 	color.g /= n;
 	color.r /= n;
 
-	printf("R: %d, G: %d, B: %d", color.r, color.g, color.b);
+	printf("R: %d, G: %d, B: %d\n", color.r, color.g, color.b);
 
+	int dist = color.b * color.b + color.g * color.g + color.r * color.r;
+
+	int lowDist = imData[0].R * imData[0].R + imData[0].G * imData[0].G + imData[0].B * imData[0].B;
+	int lowIndex = 0;
+
+	for (int i = 1; i < imgQuant; i++) {
+		int distAux = imData[i].R * imData[i].R + imData[i].G * imData[i].G + imData[i].B * imData[i].B;
+
+		if (distAux < lowDist) {
+			lowDist = distAux;
+			lowIndex = i;
+		}
+	}
+
+	printf("%s\n", imData[lowIndex].name);
 }
 
 
@@ -116,6 +134,7 @@ void cacheTest() {
 	getchar();
 }
 
+/*
 void averageTest() {
 	Mat image = imread("D:\\igora\\Pictures\\teste.png");
 	namedWindow("teste");
@@ -145,17 +164,42 @@ void averageTest() {
 
 	printf("\nteste loop\n");
 
-	grayAvrgKernel<<<1,1>>>(dImage, image.step, image.cols, image.rows, image.cols, image.rows);
+	AvrgKernel<<<2,1>>>(dImage, image.step, image.cols, image.rows);
 
 	cudaDeviceSynchronize();
 
 	waitKey(0);
 
 }
+*/
+
+void bestImageTest() {
+	Mat image = imread("D:\\igora\\Pictures\\teste.png");
+	unsigned char* dImage;
+
+	int size = image.rows * image.cols;
+
+	cudaMalloc<unsigned char>(&dImage, size);
+	cudaMemcpy(dImage, image.ptr(), size, cudaMemcpyHostToDevice);
+
+	dim3 block(1, 1);
+	
+	int blockWidth = image.cols / block.x;
+	int blockHeight = image.rows / block.y;
+
+	ImageList* imgList = processImage("D:\\igora\\Documents\\Code\\Photomosaic\\testes");
+	ImageData* imgData;
+
+	cudaMalloc<ImageData>(&imgData, sizeof(ImageData) * imgList->n);
+	cudaMemcpy(imgData, imgList->image, sizeof(ImageData) * imgList->n, cudaMemcpyHostToDevice);
+
+	AvrgKernel<<<block, 1>>>(dImage, image.step, image.cols, image.rows, imgData, imgList->n);
+	
+}
 
 int main(int argc, char** argv) {
 
 	//cacheTest();
-	averageTest();
+	//averageTest();
 
 }
