@@ -99,13 +99,20 @@ __global__ void AvrgKernel(unsigned char* input, int colorWidthStep, int imgWidt
 
 	printf("R: %d, G: %d, B: %d\n", color.r, color.g, color.b);
 
-	int dist = color.b * color.b + color.g * color.g + color.r * color.r;
+	RGB diff;
+	diff.r = color.r - imData[0].R;
+	diff.g = color.g - imData[0].G;
+	diff.b = color.b - imData[0].B;
 
-	int lowDist = imData[0].R * imData[0].R + imData[0].G * imData[0].G + imData[0].B * imData[0].B;
+	int lowDist = diff.r * diff.r + diff.g * diff.g + diff.b * diff.b;
 	int lowIndex = 0;
 
 	for (int i = 1; i < imgQuant; i++) {
-		int distAux = imData[i].R * imData[i].R + imData[i].G * imData[i].G + imData[i].B * imData[i].B;
+		diff.r = color.r - imData[i].R;
+		diff.g = color.g - imData[i].G;
+		diff.b = color.b - imData[i].B;
+
+		int distAux = diff.r * diff.r + diff.g * diff.g + diff.b * diff.b;
 
 		if (distAux < lowDist) {
 			lowDist = distAux;
@@ -177,12 +184,12 @@ void bestImageTest() {
 	Mat image = imread("D:\\igora\\Pictures\\teste.png");
 	unsigned char* dImage;
 
-	int size = image.rows * image.cols;
+	int size = image.rows * image.step;
 
 	cudaMalloc<unsigned char>(&dImage, size);
 	cudaMemcpy(dImage, image.ptr(), size, cudaMemcpyHostToDevice);
 
-	dim3 block(1, 1);
+	dim3 block(2, 2);
 	
 	int blockWidth = image.cols / block.x;
 	int blockHeight = image.rows / block.y;
@@ -201,5 +208,6 @@ int main(int argc, char** argv) {
 
 	//cacheTest();
 	//averageTest();
+	bestImageTest();
 
 }
