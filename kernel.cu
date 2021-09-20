@@ -55,7 +55,7 @@ __global__ void grayAvrgTestRow(RGB* resp, int n) {
 	resp[0].b /= n;
 }
 
-__global__ void AvrgKernel(unsigned char* input, int colorWidthStep, int imgWidth, int imgHeight, ImageData* imData, int imgQuant) {
+__global__ void AvrgKernel(unsigned char* input, int colorWidthStep, int imgWidth, int imgHeight, ImageData* imData, int imgQuant, ImageData* out) {
 	int blockX = blockIdx.x;
 	int blockY = blockIdx.y;
 
@@ -119,6 +119,13 @@ __global__ void AvrgKernel(unsigned char* input, int colorWidthStep, int imgWidt
 			lowIndex = i;
 		}
 	}
+
+	int gridWidth = gridDim.x;
+
+	int index = blockY * gridWidth + blockX;
+
+	
+	out[index] = imData[lowIndex];
 
 	printf("%s\n", imData[lowIndex].name);
 }
@@ -200,8 +207,43 @@ void bestImageTest() {
 	cudaMalloc<ImageData>(&imgData, sizeof(ImageData) * imgList->n);
 	cudaMemcpy(imgData, imgList->image, sizeof(ImageData) * imgList->n, cudaMemcpyHostToDevice);
 
-	AvrgKernel<<<block, 1>>>(dImage, image.step, image.cols, image.rows, imgData, imgList->n);
-	
+	ImageData* out;
+
+	cudaMallocManaged<ImageData>(&out, sizeof(ImageData) * block.x * block.y);
+
+	AvrgKernel<<<block, 1>>>(dImage, image.step, image.cols, image.rows, imgData, imgList->n, out);
+
+	cudaDeviceSynchronize();
+
+	waitKey();
+
+	//------------------------------------------------------
+	//Leitura das imagens e distribuição
+
+	int quantBlock = block.x * block.y;
+	unsigned char** imgArray;
+	imgArray = (unsigned char**)malloc(sizeof(char*) * quantBlock);
+
+
+	for (int i = 0; i < quantBlock; i++) {
+		Mat imgAux = imread(out[i].name);
+		int size = imgAux.rows * imgAux.step;
+
+		cudaMalloc<unsigned char>(&imgArray[i], size);
+		cudaMemcpy(imgArray[i], imgAux.ptr(), size, cudaMemcpyHostToDevice);
+
+
+		//TODO: utilizar hashmap para não ler a mesma imagem mais de uma vez
+		//TODO: kernel para preencher a imagem
+		//TODO: definir o tamanho da imagem
+		//TODO: alocar imagem final na gpu
+		//TODO: realizar calculo para encontrar os pixels correspondentes quando cortar a imagem (cortar pelo canto ou centro)
+			
+		int size = imgAux.rows * image.step;
+
+
+	}
+
 }
 
 int main(int argc, char** argv) {
