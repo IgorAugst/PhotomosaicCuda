@@ -11,7 +11,7 @@ typedef struct ImageData {
 	int R;
 	int G;
 	int B;
-	int quant;
+	int hex;
 };
 
 typedef struct ImageList {

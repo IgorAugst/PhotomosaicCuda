@@ -9,6 +9,7 @@
 #include <opencv2/core.hpp>
 #include <opencv2/imgcodecs.hpp>
 #include <opencv2/highgui.hpp>
+#include <unordered_set>
 
 using namespace std;
 using namespace cv;
@@ -24,36 +25,6 @@ typedef struct RGB {
 typedef struct imageBlock {
 	char name[MAXNAME];
 };
-
-__global__ void grayAvrgTestLine(unsigned char* input, int colorWidthStep, int n, RGB *resp) {
-	int line = blockIdx.x;
-
-	for (int i = 0; i < n; i++) {
-		int index = line * colorWidthStep + (3 * i);
-		
-		resp[line].b += input[index];
-		resp[line].g += input[index + 1];
-		resp[line].r += input[index + 2];
-
-	}
-
-	resp[line].r /= n;
-	resp[line].g /= n;
-	resp[line].b /= n;
-
-}
-
-__global__ void grayAvrgTestRow(RGB* resp, int n) {
-	for (int i = 1; i < n; i++) {
-		resp[0].r += resp[i].r;
-		resp[0].g += resp[i].g;
-		resp[0].b += resp[i].b;
-	}
-
-	resp[0].r /= n;
-	resp[0].g /= n;
-	resp[0].b /= n;
-}
 
 __global__ void AvrgKernel(unsigned char* input, int colorWidthStep, int imgWidth, int imgHeight, ImageData* imData, int imgQuant, ImageData* out) {
 	int blockX = blockIdx.x;
@@ -130,6 +101,32 @@ __global__ void AvrgKernel(unsigned char* input, int colorWidthStep, int imgWidt
 	printf("%s\n", imData[lowIndex].name);
 }
 
+__global__ void FillImageKernel(unsigned char* input, int colorWidthStep, dim3 inputSize, ImageData* imData, dim3 quant, dim3 subSize, unsigned char* subImg, int subStep, int hex) {
+	int pixX = threadIdx.x + blockIdx.x * blockDim.x;
+	int pixY = threadIdx.y + blockIdx.y * blockDim.y;
+
+	int bImgX = pixX / (inputSize.x / quant.x);
+	int bImgy = pixY / (inputSize.y / quant.y);
+
+	int blockIndex = bImgy * quant.x + bImgX;
+
+	if (imData[blockIndex].hex != hex) {
+		return;
+	}
+
+	//REFAZER TUDO ISSO AQUI QUE EU NÃO TO ENTENDENDO MAIS NADA
+
+	float rX = (float)subSize.x / (float)inputSize.x;
+	float rY = (float)subSize.y / (float)inputSize.y;
+
+	int pixSubX = pixX / rX;
+	int pixSubY = pixY / rY;
+
+	int outIndex = pixY * colorWidthStep + (3 * pixX);
+	int subIndex = pixSubY * subStep + (3 * pixSubX);
+
+	
+}
 
 void cacheTest() {
 	ImageList* imlist = processImage("D:\\igora\\Documents\\Code\\Photomosaic\\testes");
@@ -223,25 +220,31 @@ void bestImageTest() {
 	int quantBlock = block.x * block.y;
 	unsigned char** imgArray;
 	imgArray = (unsigned char**)malloc(sizeof(char*) * quantBlock);
-
+	
+	unordered_set<String> usedImg;
 
 	for (int i = 0; i < quantBlock; i++) {
-		Mat imgAux = imread(out[i].name);
-		int size = imgAux.rows * imgAux.step;
+		if (usedImg.find(out[i].name) == usedImg.end()) {
+			Mat imgAux = imread(out[i].name);
+			int size = imgAux.rows * imgAux.step;
 
-		cudaMalloc<unsigned char>(&imgArray[i], size);
-		cudaMemcpy(imgArray[i], imgAux.ptr(), size, cudaMemcpyHostToDevice);
+			cudaMalloc<unsigned char>(&imgArray[i], size);
+			cudaMemcpy(imgArray[i], imgAux.ptr(), size, cudaMemcpyHostToDevice);
+
+			//kernel
+
+			usedImg.insert(out[i].name);
+		}
 
 
+
+	
 		//TODO: utilizar hashmap para não ler a mesma imagem mais de uma vez
 		//TODO: kernel para preencher a imagem
 		//TODO: definir o tamanho da imagem
 		//TODO: alocar imagem final na gpu
 		//TODO: realizar calculo para encontrar os pixels correspondentes quando cortar a imagem (cortar pelo canto ou centro)
 			
-		int size = imgAux.rows * image.step;
-
-
 	}
 
 }

@@ -39,7 +39,7 @@ ImageList* readImages(string path) {
 		string at = file.path().string();
 		if (at.find(meta) == string::npos) {
 			strcpy(imList->image[imList->n].name, at.c_str());
-			imList->image[imList->n++].quant = 0;
+			imList->image[imList->n++].hex = 0;
 		}
 	}
 
@@ -53,6 +53,7 @@ void calculateValues(ImageData* imData, cv::Mat image) {
 	imData->G = mean[1];
 	imData->R = mean[2];
 	imData->gray = 0.299 * imData->R + 0.587 * imData->G + 0.114 * imData->B;
+	imData->hex = imData->R * 256 * 256 + imData->G * 256 + imData->B;
 }
 
 ImageList* processImage(string path) {
