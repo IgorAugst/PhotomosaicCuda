@@ -9,7 +9,7 @@
 #include <opencv2/core.hpp>
 #include <opencv2/imgcodecs.hpp>
 #include <opencv2/highgui.hpp>
-#include <unordered_set>
+#include <set>
 
 using namespace std;
 using namespace cv;
@@ -101,31 +101,39 @@ __global__ void AvrgKernel(unsigned char* input, int colorWidthStep, int imgWidt
 	printf("%s\n", imData[lowIndex].name);
 }
 
-__global__ void FillImageKernel(unsigned char* input, int colorWidthStep, dim3 inputSize, ImageData* imData, dim3 quant, dim3 subSize, unsigned char* subImg, int subStep, int hex) {
-	int pixX = threadIdx.x + blockIdx.x * blockDim.x;
-	int pixY = threadIdx.y + blockIdx.y * blockDim.y;
+__global__ void FillImageKernel(unsigned char* output, int outputStep, dim3 outputSize, ImageData* imData, dim3 quantBlock, dim3 blockImgSize, unsigned char* blockImg, int blockStep, int hex) {
+	
+	int outX = blockDim.x * blockIdx.x + threadIdx.x;
+	int outY = blockDim.y * blockIdx.y + threadIdx.y;
 
-	int bImgX = pixX / (inputSize.x / quant.x);
-	int bImgy = pixY / (inputSize.y / quant.y);
+	dim3 outputTotalSize(outputSize.x * quantBlock.x, outputSize.y * quantBlock.y);
 
-	int blockIndex = bImgy * quant.x + bImgX;
-
-	if (imData[blockIndex].hex != hex) {
+	if (outX > outputTotalSize.x || outY > outputTotalSize.y) {
 		return;
 	}
 
-	//REFAZER TUDO ISSO AQUI QUE EU NÃO TO ENTENDENDO MAIS NADA
+	int blockImgX = outX / (outputSize.x / quantBlock.x);
+	int blockImgY = outY / (outputSize.y / quantBlock.y);
 
-	float rX = (float)subSize.x / (float)inputSize.x;
-	float rY = (float)subSize.y / (float)inputSize.y;
+	int blockImgIndex = blockImgY * quantBlock.x + blockImgX;
 
-	int pixSubX = pixX / rX;
-	int pixSubY = pixY / rY;
+	if (imData[blockImgIndex].hex != hex) {
+		return;
+	}
 
-	int outIndex = pixY * colorWidthStep + (3 * pixX);
-	int subIndex = pixSubY * subStep + (3 * pixSubX);
+	float rX = (float)outputSize.x / (float)blockImgSize.x;
+	float rY = (float)outputSize.y / (float)blockImgSize.y;
 
-	
+	int pixSubX = outX / rX;
+	int pixSubY = outY / rY;
+
+	int outputIndex = outY * outputStep + (3 * outX);
+	int subIndex = pixSubY * blockStep + (3 * pixSubX);
+
+	output[outputIndex] = blockImg[subIndex];
+	output[outputIndex + 1] = blockImg[subIndex + 1];
+	output[outputIndex + 2] = blockImg[subIndex + 2];
+
 }
 
 void cacheTest() {
@@ -185,7 +193,7 @@ void averageTest() {
 */
 
 void bestImageTest() {
-	Mat image = imread("D:\\igora\\Pictures\\teste.png");
+	Mat image = imread("D:\\igora\\Pictures\\quad.png");
 	unsigned char* dImage;
 
 	int size = image.rows * image.step;
@@ -205,14 +213,17 @@ void bestImageTest() {
 	cudaMemcpy(imgData, imgList->image, sizeof(ImageData) * imgList->n, cudaMemcpyHostToDevice);
 
 	ImageData* out;
+	ImageData* outDevData;
 
-	cudaMallocManaged<ImageData>(&out, sizeof(ImageData) * block.x * block.y);
+	cudaMalloc<ImageData>(&outDevData, sizeof(ImageData) * block.x * block.y);
 
-	AvrgKernel<<<block, 1>>>(dImage, image.step, image.cols, image.rows, imgData, imgList->n, out);
+	out = (ImageData*)malloc(sizeof(ImageData) * block.x * block.y);
+
+	AvrgKernel<<<block, 1>>>(dImage, image.step, image.cols, image.rows, imgData, imgList->n, outDevData);
 
 	cudaDeviceSynchronize();
 
-	waitKey();
+	cudaMemcpy(out, outDevData, sizeof(ImageData) * block.x * block.y, cudaMemcpyDeviceToHost);
 
 	//------------------------------------------------------
 	//Leitura das imagens e distribuição
@@ -221,24 +232,40 @@ void bestImageTest() {
 	unsigned char** imgArray;
 	imgArray = (unsigned char**)malloc(sizeof(char*) * quantBlock);
 	
-	unordered_set<String> usedImg;
+	set<int> usedImg;
+
+	dim3 outSize(500, 500);
+
+	dim3 outImageSize(outSize.x * block.x, outSize.y * block.y);
+
+	Mat outImg(outImageSize.x, outImageSize.y, CV_8UC3);
+	unsigned char* outDev;
+	int outImgSize = outImg.step * outImg.rows;
+
+	cudaMalloc<unsigned char>(&outDev, outImgSize);
 
 	for (int i = 0; i < quantBlock; i++) {
-		if (usedImg.find(out[i].name) == usedImg.end()) {
+		if (usedImg.find(out[i].hex) == usedImg.end()) {
 			Mat imgAux = imread(out[i].name);
 			int size = imgAux.rows * imgAux.step;
 
 			cudaMalloc<unsigned char>(&imgArray[i], size);
 			cudaMemcpy(imgArray[i], imgAux.ptr(), size, cudaMemcpyHostToDevice);
 
-			//kernel
+			dim3 blockImgSize(imgAux.cols, imgAux.rows);
 
-			usedImg.insert(out[i].name);
+			dim3 threads(MAX, MAX);
+
+			dim3 blockKernel(outImageSize.x / MAX, outImageSize.y / MAX);
+
+			blockKernel.x++;
+			blockKernel.y++;
+
+			FillImageKernel<<<blockKernel, threads>>>(outDev, outImg.step, outSize, outDevData, block, blockImgSize, imgArray[i], imgAux.step, out[i].hex);
+
+			usedImg.insert(out[i].hex);
 		}
 
-
-
-	
 		//TODO: utilizar hashmap para não ler a mesma imagem mais de uma vez
 		//TODO: kernel para preencher a imagem
 		//TODO: definir o tamanho da imagem
@@ -247,6 +274,15 @@ void bestImageTest() {
 			
 	}
 
+
+	cudaDeviceSynchronize();
+
+	cudaMemcpy(outImg.ptr(), outDev, outImgSize, cudaMemcpyDeviceToHost);
+
+	namedWindow("vai");
+	imshow("vai", outImg);
+
+	waitKey();
 }
 
 int main(int argc, char** argv) {
