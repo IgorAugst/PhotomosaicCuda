@@ -9,6 +9,7 @@
 #include <opencv2/core.hpp>
 #include <opencv2/imgcodecs.hpp>
 #include <opencv2/highgui.hpp>
+#include <opencv2/imgproc.hpp>
 #include <set>
 
 using namespace std;
@@ -106,28 +107,39 @@ __global__ void FillImageKernel(unsigned char* output, int outputStep, dim3 outp
 	int outX = blockDim.x * blockIdx.x + threadIdx.x;
 	int outY = blockDim.y * blockIdx.y + threadIdx.y;
 
-	dim3 outputTotalSize(outputSize.x * quantBlock.x, outputSize.y * quantBlock.y);
+	dim3 outputPartialSize(outputSize.x * quantBlock.x, outputSize.y * quantBlock.y);
 
-	if (outX > outputTotalSize.x || outY > outputTotalSize.y) {
+	int outputTotalSize = outputPartialSize.x * outputPartialSize.y;
+
+	int outputIndex = outY * outputStep + (3 * outX);
+
+	printf("pixel %d\n", outputIndex);
+
+	if (outputIndex > outputTotalSize * 3) {
 		return;
 	}
 
-	int blockImgX = outX / (outputSize.x / quantBlock.x);
-	int blockImgY = outY / (outputSize.y / quantBlock.y);
+	int blockImgY = (float)outY / (float)outputSize.y;
+	int blockImgX = (float)outX / (float)outputSize.x;
 
 	int blockImgIndex = blockImgY * quantBlock.x + blockImgX;
+
+	
+	printf("%d %d\n", outX, outY);
 
 	if (imData[blockImgIndex].hex != hex) {
 		return;
 	}
 
-	float rX = (float)outputSize.x / (float)blockImgSize.x;
-	float rY = (float)outputSize.y / (float)blockImgSize.y;
+	printf("i: %d\n", blockImgIndex);
+
+	float rX = (float)outputSize.x / ((float)blockImgSize.x / (float)quantBlock.x);
+	float rY = (float)outputSize.y / ((float)blockImgSize.y / (float)quantBlock.y);
 
 	int pixSubX = outX / rX;
 	int pixSubY = outY / rY;
 
-	int outputIndex = outY * outputStep + (3 * outX);
+	
 	int subIndex = pixSubY * blockStep + (3 * pixSubX);
 
 	output[outputIndex] = blockImg[subIndex];
@@ -234,11 +246,11 @@ void bestImageTest() {
 	
 	set<int> usedImg;
 
-	dim3 outSize(500, 500);
+	dim3 outSize(16, 16);
 
 	dim3 outImageSize(outSize.x * block.x, outSize.y * block.y);
 
-	Mat outImg(outImageSize.x, outImageSize.y, CV_8UC3);
+	Mat outImg(outImageSize.y, outImageSize.x, CV_8UC3);
 	unsigned char* outDev;
 	int outImgSize = outImg.step * outImg.rows;
 
@@ -261,7 +273,9 @@ void bestImageTest() {
 			blockKernel.x++;
 			blockKernel.y++;
 
-			FillImageKernel<<<blockKernel, threads>>>(outDev, outImg.step, outSize, outDevData, block, blockImgSize, imgArray[i], imgAux.step, out[i].hex);
+			FillImageKernel << <1, dim3(32, 32) >> > (outDev, outImg.step, outSize, outDevData, block, blockImgSize, imgArray[i], imgAux.step, out[i].hex);
+			//FillImageKernel<<<1, dim3(32,32)>>>(outDev, outImg.step, outSize, outDevData, block, blockImgSize, imgArray[i], imgAux.step, out[i].hex);
+			//FillImageKernel << <blockKernel, threads>> > (outDev, outImg.step, outSize, outDevData, block, blockImgSize, imgArray[i], imgAux.step, out[i].hex);
 
 			usedImg.insert(out[i].hex);
 		}
@@ -278,6 +292,10 @@ void bestImageTest() {
 	cudaDeviceSynchronize();
 
 	cudaMemcpy(outImg.ptr(), outDev, outImgSize, cudaMemcpyDeviceToHost);
+
+	Mat resized;
+
+	//resize(outImg, resized, cv::Size(), 200, 200);
 
 	namedWindow("vai");
 	imshow("vai", outImg);
