@@ -11,6 +11,7 @@
 #include <opencv2/highgui.hpp>
 #include <opencv2/imgproc.hpp>
 #include <set>
+#include <time.h>
 
 using namespace std;
 using namespace cv;
@@ -69,8 +70,6 @@ __global__ void AvrgKernel(unsigned char* input, int colorWidthStep, int imgWidt
 	color.g /= n;
 	color.r /= n;
 
-	printf("R: %d, G: %d, B: %d\n", color.r, color.g, color.b);
-
 	RGB diff;
 	diff.r = color.r - imData[0].R;
 	diff.g = color.g - imData[0].G;
@@ -99,7 +98,7 @@ __global__ void AvrgKernel(unsigned char* input, int colorWidthStep, int imgWidt
 	
 	out[index] = imData[lowIndex];
 
-	printf("%s\n", imData[lowIndex].name);
+	//printf("%s\n", out[index].name);
 }
 
 __global__ void FillImageKernel(unsigned char* output, int outputStep, dim3 outputSize, ImageData* imData, dim3 quantBlock, dim3 blockImgSize, unsigned char* blockImg, int blockStep, int hex) {
@@ -109,15 +108,15 @@ __global__ void FillImageKernel(unsigned char* output, int outputStep, dim3 outp
 
 	dim3 outputPartialSize(outputSize.x * quantBlock.x, outputSize.y * quantBlock.y);
 
+	if (outX > outputPartialSize.x || outY > outputPartialSize.y) {
+		return;
+	}
+
 	int outputTotalSize = outputPartialSize.x * outputPartialSize.y;
 
 	int outputIndex = outY * outputStep + (3 * outX);
 
-	printf("pixel %d\n", outputIndex);
-
-	if (outputIndex > outputTotalSize * 3) {
-		return;
-	}
+	//printf("pixel %d\n", outputIndex);
 
 	int blockImgY = (float)outY / (float)outputSize.y;
 	int blockImgX = (float)outX / (float)outputSize.x;
@@ -125,19 +124,19 @@ __global__ void FillImageKernel(unsigned char* output, int outputStep, dim3 outp
 	int blockImgIndex = blockImgY * quantBlock.x + blockImgX;
 
 	
-	printf("%d %d\n", outX, outY);
+	//printf("%d %d\n", outX, outY);
 
 	if (imData[blockImgIndex].hex != hex) {
 		return;
 	}
 
-	printf("i: %d\n", blockImgIndex);
+	//printf("i: %d\n", blockImgIndex);
 
-	float rX = (float)outputSize.x / ((float)blockImgSize.x / (float)quantBlock.x);
-	float rY = (float)outputSize.y / ((float)blockImgSize.y / (float)quantBlock.y);
+	float rX = (float)outputSize.x / ((float)blockImgSize.x);
+	float rY = (float)outputSize.y / ((float)blockImgSize.y);
 
-	int pixSubX = outX / rX;
-	int pixSubY = outY / rY;
+	int pixSubX = (outX % outputSize.x) / rX;
+	int pixSubY = (outY % outputSize.y) / rY;
 
 	
 	int subIndex = pixSubY * blockStep + (3 * pixSubX);
@@ -205,7 +204,9 @@ void averageTest() {
 */
 
 void bestImageTest() {
-	Mat image = imread("D:\\igora\\Pictures\\quad.png");
+	clock_t begin = clock();
+
+	Mat image = imread("D:\\igora\\Downloads\\Screenshot_20210318-082317.jpg");
 	unsigned char* dImage;
 
 	int size = image.rows * image.step;
@@ -213,12 +214,14 @@ void bestImageTest() {
 	cudaMalloc<unsigned char>(&dImage, size);
 	cudaMemcpy(dImage, image.ptr(), size, cudaMemcpyHostToDevice);
 
-	dim3 block(2, 2);
+	dim3 block(200, 200);
 	
 	int blockWidth = image.cols / block.x;
 	int blockHeight = image.rows / block.y;
 
-	ImageList* imgList = processImage("D:\\igora\\Documents\\Code\\Photomosaic\\testes");
+	//ImageList* imgList = processImage("D:\\igora\\Documents\\Code\\Photomosaic\\images");
+	//saveCache(imgList);
+	ImageList* imgList = readCache();
 	ImageData* imgData;
 
 	cudaMalloc<ImageData>(&imgData, sizeof(ImageData) * imgList->n);
@@ -230,6 +233,8 @@ void bestImageTest() {
 	cudaMalloc<ImageData>(&outDevData, sizeof(ImageData) * block.x * block.y);
 
 	out = (ImageData*)malloc(sizeof(ImageData) * block.x * block.y);
+
+	printf("calculando valores...\n");
 
 	AvrgKernel<<<block, 1>>>(dImage, image.step, image.cols, image.rows, imgData, imgList->n, outDevData);
 
@@ -246,7 +251,7 @@ void bestImageTest() {
 	
 	set<int> usedImg;
 
-	dim3 outSize(16, 16);
+	dim3 outSize(50, 50);
 
 	dim3 outImageSize(outSize.x * block.x, outSize.y * block.y);
 
@@ -255,6 +260,8 @@ void bestImageTest() {
 	int outImgSize = outImg.step * outImg.rows;
 
 	cudaMalloc<unsigned char>(&outDev, outImgSize);
+
+	printf("Preenchendo a imagem...\n");
 
 	for (int i = 0; i < quantBlock; i++) {
 		if (usedImg.find(out[i].hex) == usedImg.end()) {
@@ -273,32 +280,33 @@ void bestImageTest() {
 			blockKernel.x++;
 			blockKernel.y++;
 
-			FillImageKernel << <1, dim3(32, 32) >> > (outDev, outImg.step, outSize, outDevData, block, blockImgSize, imgArray[i], imgAux.step, out[i].hex);
-			//FillImageKernel<<<1, dim3(32,32)>>>(outDev, outImg.step, outSize, outDevData, block, blockImgSize, imgArray[i], imgAux.step, out[i].hex);
-			//FillImageKernel << <blockKernel, threads>> > (outDev, outImg.step, outSize, outDevData, block, blockImgSize, imgArray[i], imgAux.step, out[i].hex);
+			FillImageKernel << <blockKernel, threads>> > (outDev, outImg.step, outSize, outDevData, block, blockImgSize, imgArray[i], imgAux.step, out[i].hex);
 
 			usedImg.insert(out[i].hex);
 		}
 
-		//TODO: utilizar hashmap para não ler a mesma imagem mais de uma vez
-		//TODO: kernel para preencher a imagem
-		//TODO: definir o tamanho da imagem
-		//TODO: alocar imagem final na gpu
-		//TODO: realizar calculo para encontrar os pixels correspondentes quando cortar a imagem (cortar pelo canto ou centro)
 			
 	}
 
 
 	cudaDeviceSynchronize();
 
+	printf("salvando imagem...\n");
+
 	cudaMemcpy(outImg.ptr(), outDev, outImgSize, cudaMemcpyDeviceToHost);
 
-	Mat resized;
-
-	//resize(outImg, resized, cv::Size(), 200, 200);
-
+	/*
 	namedWindow("vai");
 	imshow("vai", outImg);
+	*/
+
+	imwrite("D:\\igora\\Pictures\\PhotoCuda\\teste.jpg", outImg);
+
+	clock_t end = clock();
+
+	double timeSpent = (double)(end - begin) / CLOCKS_PER_SEC;
+
+	printf("tempo gasto: %.2fs\n", timeSpent);
 
 	waitKey();
 }

@@ -62,6 +62,7 @@ ImageList* processImage(string path) {
 	for (int i = 0; i < imlist->n; i++) {
 		cv::Mat image = cv::imread(imlist->image[i].name);
 		calculateValues(&(imlist->image[i]), image);
+		image.release();
 	}
 
 	insertionSort(imlist);
