@@ -3,7 +3,7 @@
   <ImportGroup Label="PropertySheets" />
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup>
-    <IncludePath>D:\opencv3\build\install\include;$(IncludePath)</IncludePath>
+    <IncludePath>D:\igora\Documents\Code\Cuda\Photomosaic\argparse-2.2\include;D:\opencv3\build\install\include;$(IncludePath)</IncludePath>
     <LibraryPath>D:\opencv3\build\install\x64\vc16\staticlib;$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <ItemDefinitionGroup>

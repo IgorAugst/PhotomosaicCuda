@@ -203,6 +203,41 @@ void averageTest() {
 }
 */
 
+ImageData* Average(Mat img, ImageList* imList, int x) {
+	float ratio = (float)img.cols / (float)img.rows;
+	int yBlocks = img.rows / ratio;
+	dim3 blockKernel(x, y);
+
+	unsigned char* dImage;
+	int size = img.rows * img.step;
+
+	cudaMalloc<unsigned char>(&dImage, size);
+	cudaMemcpy(dImage, img.ptr(), size, cudaMemcpyHostToDevice); //aloca e copia a imagem para gpu
+
+	ImageData* imData;
+	cudaMalloc<ImageData>(&imData, sizeof(ImageData) * imList->n);
+	cudaMemcpy(imData, imList->image, sizeof(ImageData) * imList->n, cudaMemcpyHostToDevice); //aloca e copia o cache das imagens
+
+	ImageData* outData;
+	cudaMalloc<ImageData>(&outData, sizeof(ImageData) * x * y); //aloca os dados de saida
+
+	AvrgKernel<<<blockKernel, 1>>>(dImage, img.step, img.cols, img.rows, imData, imList->n, outData);
+
+	cudaDeviceSynchronize();
+
+	ImageData* hostData;
+	hostData = (ImageData*)malloc(sizeof(ImageData) * x * y);
+
+	cudaMemcpy(hostData, outData, sizeof(ImageData) * x * y, cudaMemcpyDeviceToHost); // copia os dados para o host
+
+	cudaFree(outData);
+	cudaFree(imData);
+	cudaFree(dImage);
+
+	return hostData;
+
+}
+
 void bestImageTest() {
 	clock_t begin = clock();
 
@@ -309,12 +344,4 @@ void bestImageTest() {
 	printf("tempo gasto: %.2fs\n", timeSpent);
 
 	waitKey();
-}
-
-int main(int argc, char** argv) {
-
-	//cacheTest();
-	//averageTest();
-	bestImageTest();
-
 }

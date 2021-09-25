@@ -84,6 +84,7 @@
     <CudaCompile Include="kernel.cu" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="Main.cpp" />
     <ClCompile Include="preProcess.cpp" />
   </ItemGroup>
   <ItemGroup>
