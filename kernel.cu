@@ -1,20 +1,4 @@
-﻿#include "cuda_runtime.h"
-#include "device_launch_parameters.h"
-#include "preProcess.h"
-
-#include <stdio.h>
-#include <iostream>
-#include <math.h>
-
-#include <opencv2/core.hpp>
-#include <opencv2/imgcodecs.hpp>
-#include <opencv2/highgui.hpp>
-#include <opencv2/imgproc.hpp>
-#include <set>
-#include <time.h>
-
-using namespace std;
-using namespace cv;
+﻿#include "kernel.h"
 
 #define MAX 32
 
@@ -147,23 +131,6 @@ __global__ void FillImageKernel(unsigned char* output, int outputStep, dim3 outp
 
 }
 
-void cacheTest() {
-	ImageList* imlist = processImage("D:\\igora\\Documents\\Code\\Photomosaic\\testes");
-
-	bool status = saveCache(imlist);
-
-	cout << (status ? "salvo" : "erro") << endl;
-
-	free(imlist->image);
-	free(imlist);
-
-	imlist = readCache();
-
-	cout << (imlist != NULL ? "lido" : "erro") << endl;
-
-	getchar();
-}
-
 /*
 void averageTest() {
 	Mat image = imread("D:\\igora\\Pictures\\teste.png");
@@ -203,10 +170,10 @@ void averageTest() {
 }
 */
 
-ImageData* Average(Mat img, ImageList* imList, int x) {
+ImageList* Average(Mat img, ImageList* imList, int x) {
 	float ratio = (float)img.cols / (float)img.rows;
-	int yBlocks = img.rows / ratio;
-	dim3 blockKernel(x, y);
+	int yBlocks = x / (int)ratio;
+	dim3 blockKernel(x, yBlocks);
 
 	unsigned char* dImage;
 	int size = img.rows * img.step;
@@ -219,23 +186,83 @@ ImageData* Average(Mat img, ImageList* imList, int x) {
 	cudaMemcpy(imData, imList->image, sizeof(ImageData) * imList->n, cudaMemcpyHostToDevice); //aloca e copia o cache das imagens
 
 	ImageData* outData;
-	cudaMalloc<ImageData>(&outData, sizeof(ImageData) * x * y); //aloca os dados de saida
+	cudaMalloc<ImageData>(&outData, sizeof(ImageData) * x * yBlocks); //aloca os dados de saida
 
 	AvrgKernel<<<blockKernel, 1>>>(dImage, img.step, img.cols, img.rows, imData, imList->n, outData);
 
 	cudaDeviceSynchronize();
 
 	ImageData* hostData;
-	hostData = (ImageData*)malloc(sizeof(ImageData) * x * y);
+	hostData = (ImageData*)malloc(sizeof(ImageData) * x * yBlocks);
 
-	cudaMemcpy(hostData, outData, sizeof(ImageData) * x * y, cudaMemcpyDeviceToHost); // copia os dados para o host
+	cudaMemcpy(hostData, outData, sizeof(ImageData) * x * yBlocks, cudaMemcpyDeviceToHost); // copia os dados para o host
 
 	cudaFree(outData);
 	cudaFree(imData);
 	cudaFree(dImage);
 
-	return hostData;
+	ImageList* outList = (ImageList*)malloc(sizeof(ImageList));
+	outList->image = hostData;
+	outList->n = x * yBlocks;
 
+	return outList;
+
+}
+
+void GenerateImage(ImageList* structure, ImageList* cache, int x, dim3 resDim,dim3 finalImageSize, Mat *finalImage) {
+	int y = structure->n / x;
+
+	dim3 blockQuant(x, y);
+	//dim3 finalImageSize(x * res, y * res);
+
+	//dim3 resDim(res, res);
+
+	ImageData *devData;
+
+	cudaMalloc<ImageData>(&devData, sizeof(ImageData) * structure->n);
+	cudaMemcpy(devData, structure->image, sizeof(ImageData) * structure->n, cudaMemcpyHostToDevice);
+
+	//Mat finalImage(x, y, CV_8UC3);
+	unsigned char* dFinalImage;
+
+	int sizeFinal = finalImage->rows * finalImage->step;
+
+	cudaMalloc<unsigned char>(&dFinalImage, sizeFinal);
+
+	unsigned char* dImageAux;
+
+	dim3 blockKernel(finalImageSize.x / MAX, finalImageSize.y / MAX);
+	blockKernel.x++;
+	blockKernel.y++;
+	dim3 threads(MAX, MAX);	
+
+	set<int> usedImage;
+
+	for (int i = 0; i < structure->n; i++) {
+		if (usedImage.find(structure->image[i].hex) != usedImage.end()) {
+			continue;
+		}
+		Mat imgAux = imread(structure->image[i].name);
+		int size = imgAux.step * imgAux.rows;
+
+		cudaMalloc<unsigned char>(&dImageAux, size);
+		cudaMemcpy(dImageAux, imgAux.ptr(), size, cudaMemcpyHostToDevice);
+
+		dim3 dimAux(imgAux.cols, imgAux.rows);
+
+		FillImageKernel<<<blockKernel, threads>>>(dFinalImage, finalImage->step, resDim, devData, blockQuant, dimAux, dImageAux, imgAux.step, structure->image[i].hex);
+
+		cudaDeviceSynchronize();
+
+		cudaFree(dImageAux);
+
+		usedImage.insert(structure->image[i].hex);
+
+	}
+
+	cudaMemcpy(finalImage->ptr(), dFinalImage, sizeFinal, cudaMemcpyDeviceToHost);
+
+	return;
 }
 
 void bestImageTest() {

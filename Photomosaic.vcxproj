@@ -88,6 +88,7 @@
     <ClCompile Include="preProcess.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="kernel.h" />
     <ClInclude Include="preProcess.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
