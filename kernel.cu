@@ -16,8 +16,8 @@ __global__ void AvrgKernel(unsigned char* input, int colorWidthStep, int imgWidt
 	int blockX = blockIdx.x;
 	int blockY = blockIdx.y;
 
-	int blockWidth = imgWidth / gridDim.x;
-	int blockHeight = imgHeight / gridDim.y;
+	float blockWidth = (float)imgWidth / (float)gridDim.x;
+	float blockHeight = (float)imgHeight / (float)gridDim.y;
 
 	int sx = blockX * blockWidth;
 	int sy = blockY * blockHeight;
@@ -172,7 +172,7 @@ void averageTest() {
 
 ImageList* Average(Mat img, ImageList* imList, int x) {
 	float ratio = (float)img.cols / (float)img.rows;
-	int yBlocks = x / (int)ratio;
+	int yBlocks = ceil(x / ratio);
 	dim3 blockKernel(x, yBlocks);
 
 	unsigned char* dImage;
@@ -209,7 +209,7 @@ ImageList* Average(Mat img, ImageList* imList, int x) {
 
 }
 
-void GenerateImage(ImageList* structure, ImageList* cache, int x, dim3 resDim,dim3 finalImageSize, Mat *finalImage) {
+void GenerateImage(ImageList* structure, ImageList* cache, int x, dim3 resDim,dim3 finalImageSize, Mat *finalImage, void(*progressCallback)(int, int)) {
 	int y = structure->n / x;
 
 	dim3 blockQuant(x, y);
@@ -258,7 +258,13 @@ void GenerateImage(ImageList* structure, ImageList* cache, int x, dim3 resDim,di
 
 		usedImage.insert(structure->image[i].hex);
 
+		if (i % 10 == 0) {
+			(*progressCallback)(i, structure->n);
+		}
+
 	}
+
+	(*progressCallback)(100, 100);
 
 	cudaMemcpy(finalImage->ptr(), dFinalImage, sizeFinal, cudaMemcpyDeviceToHost);
 

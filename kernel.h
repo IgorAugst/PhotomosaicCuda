@@ -20,4 +20,4 @@ using namespace cv;
 
 ImageList* Average(Mat img, ImageList* imList, int x);
 
-void GenerateImage(ImageList* structure, ImageList* cache, int x, dim3 resDim, dim3 finalImageSize, Mat* finalImage);
+void GenerateImage(ImageList* structure, ImageList* cache, int x, dim3 resDim, dim3 finalImageSize, Mat* finalImage, void(*progressCallback)(int, int));

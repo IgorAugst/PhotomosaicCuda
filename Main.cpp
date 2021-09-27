@@ -1,7 +1,14 @@
+#include <Windows.h>
+#include <shellapi.h>
+
 #include "preProcess.h"
 #include "kernel.h"
 #include <argparse/argparse.hpp>
 #include <string>
+#include <chrono>
+#include <locale.h>
+
+using namespace std::chrono;
 
 /*
 Argumentos da linha de comando
@@ -13,7 +20,15 @@ atualizar o cache
 preto e branco (bool)
 */
 
+void progressBar(int n, int max);
+
 int main(int argc, char* argv[]) {
+	setlocale(LC_ALL, "");
+
+	auto start = high_resolution_clock::now();
+
+	SetConsoleOutputCP(CP_UTF8);
+
 	argparse::ArgumentParser program("Photomosaic");
 	program.add_argument("-i", "--input").help("Imagem de entrada").required();
 	program.add_argument("-o", "--output").help("Imagem de saída").required();
@@ -55,7 +70,7 @@ int main(int argc, char* argv[]) {
 
 	int x = program.get<int>("--quant");
 
-	printf("Calculando correspondencias...\n");
+	printf("Calculando correspondências...\n");
 	ImageList *structure = Average(inputImage, imList, x);
 
 	int res = program.get<int>("--res");
@@ -65,17 +80,48 @@ int main(int argc, char* argv[]) {
 
 	dim3 finalSize(x * res, y * res);
 
-	Mat finalImage(finalSize.x, finalSize.y, CV_8UC3);
+	Mat finalImage(finalSize.y, finalSize.x, CV_8UC3);
 
 	printf("Gerando Mosaico...\n");
 
-	GenerateImage(structure, imList, x, resolution, finalSize, &finalImage);
+	GenerateImage(structure, imList, x, resolution, finalSize, &finalImage, progressBar);
 
-	namedWindow("final");
-	imshow("final", finalImage);
+	string outDir = program.get<string>("--output");
 
-	printf("Fim.\n");
+	imwrite(outDir, finalImage);
+
+	ShellExecute(NULL, "open", outDir.c_str(), NULL, NULL, SW_SHOW);
+
+	auto stop = high_resolution_clock::now();
+
+	auto duration = duration_cast<milliseconds>(stop - start);
+
+	float secDuration = (float)duration.count() / 1000.0;
+
+	printf("Exeucução finalizada em: %.2f segundos",secDuration);
 
 	waitKey();
 
+}
+
+void progressBar(int n, int max) {
+	float x = (float)n / (float)max;
+	x *= 100;
+
+	printf("[");
+
+	for (int i = 0; i <= 100; i++) {
+		if (i <= x) {
+			printf("#");
+		}
+		else {
+			printf(" ");
+		}
+	}
+
+	printf("]\r");
+
+	if (n == max) {
+		printf("\n");
+	}
 }
