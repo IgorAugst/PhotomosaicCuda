@@ -92,7 +92,7 @@ __global__ void FillImageKernel(unsigned char* output, int outputStep, dim3 outp
 
 	dim3 outputPartialSize(outputSize.x * quantBlock.x, outputSize.y * quantBlock.y);
 
-	if (outX > outputPartialSize.x || outY > outputPartialSize.y) {
+	if (outX >= outputPartialSize.x || outY >= outputPartialSize.y) {
 		return;
 	}
 
@@ -266,7 +266,9 @@ void GenerateImage(ImageList* structure, ImageList* cache, int x, dim3 resDim,di
 
 	(*progressCallback)(100, 100);
 
-	cudaMemcpy(finalImage->ptr(), dFinalImage, sizeFinal, cudaMemcpyDeviceToHost);
+	cudaError erro = cudaMemcpy(finalImage->ptr(), dFinalImage, sizeFinal, cudaMemcpyDeviceToHost);
+
+	cout << cudaGetErrorString(erro) << endl;
 
 	return;
 }
