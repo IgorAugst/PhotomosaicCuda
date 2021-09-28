@@ -131,6 +131,25 @@ __global__ void FillImageKernel(unsigned char* output, int outputStep, dim3 outp
 
 }
 
+__global__ void ToGrayScaleKernel(unsigned char* input, int inputStep, dim3 imageDim) {
+	int x = blockIdx.x * blockDim.x + threadIdx.x;
+	int y = blockIdx.y * blockDim.y + threadIdx.y;
+
+	if (x >= imageDim.x || y >= imageDim.y) {
+		return;
+	}
+
+	int index = y * inputStep + (3 * x);
+
+	int gray = 0;
+
+	gray = (input[index] * 0.11) + (input[index + 1] * 0.59 )+ (input[index + 2] * 0.3);
+
+	input[index] = gray;
+	input[index + 1] = gray;
+	input[index + 2] = gray;
+}
+
 /*
 void averageTest() {
 	Mat image = imread("D:\\igora\\Pictures\\teste.png");
@@ -209,7 +228,7 @@ ImageList* Average(Mat img, ImageList* imList, int x) {
 
 }
 
-void GenerateImage(ImageList* structure, ImageList* cache, int x, dim3 resDim,dim3 finalImageSize, Mat *finalImage, void(*progressCallback)(int, int)) {
+void GenerateImage(ImageList* structure, ImageList* cache, int x, dim3 resDim,dim3 finalImageSize, Mat *finalImage, bool grayscale, void(*progressCallback)(int, int)) {
 	int y = structure->n / x;
 
 	dim3 blockQuant(x, y);
@@ -265,6 +284,10 @@ void GenerateImage(ImageList* structure, ImageList* cache, int x, dim3 resDim,di
 	}
 
 	(*progressCallback)(100, 100);
+
+	if (grayscale) {
+		ToGrayScaleKernel<<<blockKernel, threads>>>(dFinalImage, finalImage->step, finalImageSize);
+	}
 
 	cudaError erro = cudaMemcpy(finalImage->ptr(), dFinalImage, sizeFinal, cudaMemcpyDeviceToHost);
 

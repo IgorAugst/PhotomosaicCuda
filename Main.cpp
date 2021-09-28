@@ -84,7 +84,9 @@ int main(int argc, char* argv[]) {
 
 	printf("Gerando Mosaico...\n");
 
-	GenerateImage(structure, imList, x, resolution, finalSize, &finalImage, progressBar);
+	bool grayscale = program.get<bool>("--gray");
+
+	GenerateImage(structure, imList, x, resolution, finalSize, &finalImage, grayscale, progressBar);
 
 	string outDir = program.get<string>("--output");
 
@@ -98,7 +100,7 @@ int main(int argc, char* argv[]) {
 
 	float secDuration = (float)duration.count() / 1000.0;
 
-	printf("Exeucução finalizada em: %.2f segundos",secDuration);
+	printf("Execução finalizada em: %.2f segundos",secDuration);
 
 	waitKey();
 
