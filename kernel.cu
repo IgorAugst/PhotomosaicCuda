@@ -1,20 +1,4 @@
-﻿#include "cuda_runtime.h"
-#include "device_launch_parameters.h"
-#include "preProcess.h"
-
-#include <stdio.h>
-#include <iostream>
-#include <math.h>
-
-#include <opencv2/core.hpp>
-#include <opencv2/imgcodecs.hpp>
-#include <opencv2/highgui.hpp>
-#include <opencv2/imgproc.hpp>
-#include <set>
-#include <time.h>
-
-using namespace std;
-using namespace cv;
+﻿#include "kernel.h"
 
 #define MAX 32
 
@@ -32,8 +16,8 @@ __global__ void AvrgKernel(unsigned char* input, int colorWidthStep, int imgWidt
 	int blockX = blockIdx.x;
 	int blockY = blockIdx.y;
 
-	int blockWidth = imgWidth / gridDim.x;
-	int blockHeight = imgHeight / gridDim.y;
+	float blockWidth = (float)imgWidth / (float)gridDim.x;
+	float blockHeight = (float)imgHeight / (float)gridDim.y;
 
 	int sx = blockX * blockWidth;
 	int sy = blockY * blockHeight;
@@ -108,7 +92,7 @@ __global__ void FillImageKernel(unsigned char* output, int outputStep, dim3 outp
 
 	dim3 outputPartialSize(outputSize.x * quantBlock.x, outputSize.y * quantBlock.y);
 
-	if (outX > outputPartialSize.x || outY > outputPartialSize.y) {
+	if (outX >= outputPartialSize.x || outY >= outputPartialSize.y) {
 		return;
 	}
 
@@ -147,21 +131,23 @@ __global__ void FillImageKernel(unsigned char* output, int outputStep, dim3 outp
 
 }
 
-void cacheTest() {
-	ImageList* imlist = processImage("D:\\igora\\Documents\\Code\\Photomosaic\\testes");
+__global__ void ToGrayScaleKernel(unsigned char* input, int inputStep, dim3 imageDim) {
+	int x = blockIdx.x * blockDim.x + threadIdx.x;
+	int y = blockIdx.y * blockDim.y + threadIdx.y;
 
-	bool status = saveCache(imlist);
+	if (x >= imageDim.x || y >= imageDim.y) {
+		return;
+	}
 
-	cout << (status ? "salvo" : "erro") << endl;
+	int index = y * inputStep + (3 * x);
 
-	free(imlist->image);
-	free(imlist);
+	int gray = 0;
 
-	imlist = readCache();
+	gray = (input[index] * 0.11) + (input[index + 1] * 0.59 )+ (input[index + 2] * 0.3);
 
-	cout << (imlist != NULL ? "lido" : "erro") << endl;
-
-	getchar();
+	input[index] = gray;
+	input[index + 1] = gray;
+	input[index + 2] = gray;
 }
 
 /*
@@ -202,6 +188,113 @@ void averageTest() {
 
 }
 */
+
+ImageList* Average(Mat img, ImageList* imList, int x) {
+	float ratio = (float)img.cols / (float)img.rows;
+	int yBlocks = ceil(x / ratio);
+	dim3 blockKernel(x, yBlocks);
+
+	unsigned char* dImage;
+	int size = img.rows * img.step;
+
+	cudaMalloc<unsigned char>(&dImage, size);
+	cudaMemcpy(dImage, img.ptr(), size, cudaMemcpyHostToDevice); //aloca e copia a imagem para gpu
+
+	ImageData* imData;
+	cudaMalloc<ImageData>(&imData, sizeof(ImageData) * imList->n);
+	cudaMemcpy(imData, imList->image, sizeof(ImageData) * imList->n, cudaMemcpyHostToDevice); //aloca e copia o cache das imagens
+
+	ImageData* outData;
+	cudaMalloc<ImageData>(&outData, sizeof(ImageData) * x * yBlocks); //aloca os dados de saida
+
+	AvrgKernel<<<blockKernel, 1>>>(dImage, img.step, img.cols, img.rows, imData, imList->n, outData);
+
+	cudaDeviceSynchronize();
+
+	ImageData* hostData;
+	hostData = (ImageData*)malloc(sizeof(ImageData) * x * yBlocks);
+
+	cudaMemcpy(hostData, outData, sizeof(ImageData) * x * yBlocks, cudaMemcpyDeviceToHost); // copia os dados para o host
+
+	cudaFree(outData);
+	cudaFree(imData);
+	cudaFree(dImage);
+
+	ImageList* outList = (ImageList*)malloc(sizeof(ImageList));
+	outList->image = hostData;
+	outList->n = x * yBlocks;
+
+	return outList;
+
+}
+
+void GenerateImage(ImageList* structure, ImageList* cache, int x, dim3 resDim,dim3 finalImageSize, Mat *finalImage, bool grayscale, void(*progressCallback)(int, int)) {
+	int y = structure->n / x;
+
+	dim3 blockQuant(x, y);
+	//dim3 finalImageSize(x * res, y * res);
+
+	//dim3 resDim(res, res);
+
+	ImageData *devData;
+
+	cudaMalloc<ImageData>(&devData, sizeof(ImageData) * structure->n);
+	cudaMemcpy(devData, structure->image, sizeof(ImageData) * structure->n, cudaMemcpyHostToDevice);
+
+	//Mat finalImage(x, y, CV_8UC3);
+	unsigned char* dFinalImage;
+
+	int sizeFinal = finalImage->rows * finalImage->step;
+
+	cudaMalloc<unsigned char>(&dFinalImage, sizeFinal);
+
+	unsigned char* dImageAux;
+
+	dim3 blockKernel(finalImageSize.x / MAX, finalImageSize.y / MAX);
+	blockKernel.x++;
+	blockKernel.y++;
+	dim3 threads(MAX, MAX);	
+
+	set<int> usedImage;
+
+	for (int i = 0; i < structure->n; i++) {
+		if (usedImage.find(structure->image[i].hex) != usedImage.end()) {
+			continue;
+		}
+		Mat imgAux = imread(structure->image[i].name);
+		int size = imgAux.step * imgAux.rows;
+
+		cudaMalloc<unsigned char>(&dImageAux, size);
+		cudaMemcpy(dImageAux, imgAux.ptr(), size, cudaMemcpyHostToDevice);
+
+		dim3 dimAux(imgAux.cols, imgAux.rows);
+
+		FillImageKernel<<<blockKernel, threads>>>(dFinalImage, finalImage->step, resDim, devData, blockQuant, dimAux, dImageAux, imgAux.step, structure->image[i].hex);
+
+		cudaDeviceSynchronize();
+
+		cudaFree(dImageAux);
+
+		usedImage.insert(structure->image[i].hex);
+
+		if (i % 10 == 0) {
+			(*progressCallback)(i, structure->n);
+		}
+
+	}
+
+	(*progressCallback)(100, 100);
+
+	if (grayscale) {
+		ToGrayScaleKernel<<<blockKernel, threads>>>(dFinalImage, finalImage->step, finalImageSize);
+	}
+
+	cudaError erro = cudaMemcpy(finalImage->ptr(), dFinalImage, sizeFinal, cudaMemcpyDeviceToHost);
+
+	cout << cudaGetErrorString(erro) << endl;
+
+	return;
+}
 
 void bestImageTest() {
 	clock_t begin = clock();
@@ -309,12 +402,4 @@ void bestImageTest() {
 	printf("tempo gasto: %.2fs\n", timeSpent);
 
 	waitKey();
-}
-
-int main(int argc, char** argv) {
-
-	//cacheTest();
-	//averageTest();
-	bestImageTest();
-
 }

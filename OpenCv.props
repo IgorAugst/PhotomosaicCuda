@@ -3,13 +3,16 @@
   <ImportGroup Label="PropertySheets" />
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup>
-    <IncludePath>D:\opencv3\build\install\include;$(IncludePath)</IncludePath>
+    <IncludePath>D:\igora\Documents\Code\Cuda\Photomosaic\argparse-2.2\include;D:\opencv3\build\install\include;$(IncludePath)</IncludePath>
     <LibraryPath>D:\opencv3\build\install\x64\vc16\staticlib;$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <ItemDefinitionGroup>
     <Link>
       <AdditionalDependencies>libjpeg-turbod.lib;libpngd.lib;libwebpd.lib;libtiffd.lib;opencv_core3413d.lib;opencv_cudev3413d.lib;opencv_imgcodecs3413d.lib;opencv_imgproc3413d.lib;zlibd.lib;opencv_cudaimgproc3413d.lib;opencv_highgui3413d.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
+    <ClCompile>
+      <LanguageStandard>stdcpp17</LanguageStandard>
+    </ClCompile>
   </ItemDefinitionGroup>
   <ItemGroup />
 </Project>

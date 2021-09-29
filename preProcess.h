@@ -9,7 +9,7 @@ typedef struct ImageData {
 	char name[MAXNAME];
 	int gray;
 	int R;
-	int G;
+	int G;	
 	int B;
 	int hex;
 };
