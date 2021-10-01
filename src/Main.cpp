@@ -100,9 +100,9 @@ int main(int argc, char* argv[]) {
 
 	float secDuration = (float)duration.count() / 1000.0;
 
-	printf("Execução finalizada em: %.2f segundos",secDuration);
+	printf("Execução finalizada em: %.2f segundos\n",secDuration);
 
-	waitKey();
+	system("pause");
 
 }
 

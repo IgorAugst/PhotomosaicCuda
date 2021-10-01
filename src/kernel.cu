@@ -289,14 +289,12 @@ void GenerateImage(ImageList* structure, ImageList* cache, int x, dim3 resDim,di
 		ToGrayScaleKernel<<<blockKernel, threads>>>(dFinalImage, finalImage->step, finalImageSize);
 	}
 
-	cudaError erro = cudaMemcpy(finalImage->ptr(), dFinalImage, sizeFinal, cudaMemcpyDeviceToHost);
-
-	cout << cudaGetErrorString(erro) << endl;
+	cudaMemcpy(finalImage->ptr(), dFinalImage, sizeFinal, cudaMemcpyDeviceToHost);
 
 	return;
 }
 
-void bestImageTest() {
+/*void bestImageTest() {
 	clock_t begin = clock();
 
 	Mat image = imread("D:\\igora\\Downloads\\Screenshot_20210318-082317.jpg");
@@ -388,10 +386,10 @@ void bestImageTest() {
 
 	cudaMemcpy(outImg.ptr(), outDev, outImgSize, cudaMemcpyDeviceToHost);
 
-	/*
+	
 	namedWindow("vai");
 	imshow("vai", outImg);
-	*/
+	
 
 	imwrite("D:\\igora\\Pictures\\PhotoCuda\\teste.jpg", outImg);
 
@@ -402,4 +400,5 @@ void bestImageTest() {
 	printf("tempo gasto: %.2fs\n", timeSpent);
 
 	waitKey();
-}
+} 
+*/
