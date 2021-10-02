@@ -100,6 +100,9 @@ int main(int argc, char* argv[]) {
 
 	float secDuration = (float)duration.count() / 1000.0;
 
+	inputImage.release();
+	finalImage.release();
+
 	printf("Execução finalizada em: %.2f segundos\n",secDuration);
 
 	system("pause");
