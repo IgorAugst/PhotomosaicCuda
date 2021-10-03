@@ -1,6 +1,23 @@
 ﻿#include "kernel.h"
 
+static inline void _safe_cuda_call(cudaError err, const char* msg, const char* file_name, const int line_number)
+{
+	if (err != cudaSuccess)
+	{
+		fprintf(stderr, "%s\n\nArquivo: %s\n\nLinha: %d\n\nMotivo: %s\n", msg, file_name, line_number, cudaGetErrorString(err));
+		exit(EXIT_FAILURE);
+		system("pause");
+	}
+}
+
+#define SAFE_CALL(call,msg) _safe_cuda_call((call),(msg),__FILE__,__LINE__)
+
 #define MAX 32
+
+#define CUDA_HOST_DEVICE "Cuda MemCpy host to device"
+#define CUDA_MALLOC "Cuda Malloc"
+#define CUDA_DEVICE_HOST "Cuda MemCpy device to host"
+#define CUDA_KERNEL "Kernel launch"
 
 typedef struct RGB {
 	int r;
@@ -87,8 +104,8 @@ __global__ void AvrgKernel(unsigned char* input, int colorWidthStep, int imgWidt
 
 __global__ void FillImageKernel(unsigned char* output, int outputStep, dim3 outputSize, ImageData* imData, dim3 quantBlock, dim3 blockImgSize, unsigned char* blockImg, int blockStep, int hex) {
 	
-	int outX = blockDim.x * blockIdx.x + threadIdx.x;
-	int outY = blockDim.y * blockIdx.y + threadIdx.y;
+	unsigned int outX = blockDim.x * blockIdx.x + threadIdx.x;
+	unsigned int outY = blockDim.y * blockIdx.y + threadIdx.y;
 
 	dim3 outputPartialSize(outputSize.x * quantBlock.x, outputSize.y * quantBlock.y);
 
@@ -96,9 +113,9 @@ __global__ void FillImageKernel(unsigned char* output, int outputStep, dim3 outp
 		return;
 	}
 
-	int outputTotalSize = outputPartialSize.x * outputPartialSize.y;
+	unsigned int outputTotalSize = outputPartialSize.x * outputPartialSize.y;
 
-	int outputIndex = outY * outputStep + (3 * outX);
+	unsigned int outputIndex = outY * outputStep + (3 * outX);
 
 	//printf("pixel %d\n", outputIndex);
 
@@ -119,11 +136,11 @@ __global__ void FillImageKernel(unsigned char* output, int outputStep, dim3 outp
 	float rX = (float)outputSize.x / ((float)blockImgSize.x);
 	float rY = (float)outputSize.y / ((float)blockImgSize.y);
 
-	int pixSubX = (outX % outputSize.x) / rX;
-	int pixSubY = (outY % outputSize.y) / rY;
+	unsigned int pixSubX = (outX % outputSize.x) / rX;
+	unsigned int pixSubY = (outY % outputSize.y) / rY;
 
 	
-	int subIndex = pixSubY * blockStep + (3 * pixSubX);
+	unsigned int subIndex = pixSubY * blockStep + (3 * pixSubX);
 
 	output[outputIndex] = blockImg[subIndex];
 	output[outputIndex + 1] = blockImg[subIndex + 1];
@@ -150,45 +167,6 @@ __global__ void ToGrayScaleKernel(unsigned char* input, int inputStep, dim3 imag
 	input[index + 2] = gray;
 }
 
-/*
-void averageTest() {
-	Mat image = imread("D:\\igora\\Pictures\\teste.png");
-	namedWindow("teste");
-	imshow("teste", image);
-
-	unsigned char *dImage;
-	int size = image.step * image.rows;
-
-	cudaMalloc<unsigned char>(&dImage, size);
-	cudaMemcpy(dImage, image.ptr(), size, cudaMemcpyHostToDevice);
-
-	dim3 blocks(image.rows);
-	
-	RGB* values;
-
-	cudaMallocManaged(&values, sizeof(RGB) * image.rows);
-
-	grayAvrgTestLine<<<blocks, 1>>>(dImage, image.step, image.cols, values);
-
-	cudaDeviceSynchronize();
-
-	grayAvrgTestRow << <1, 1 >> > (values, image.rows);
-
-	cudaDeviceSynchronize();
-
-	printf("R: %d, G: %d, B: %d", values[0].r, values[0].g, values[0].b);
-
-	printf("\nteste loop\n");
-
-	AvrgKernel<<<2,1>>>(dImage, image.step, image.cols, image.rows);
-
-	cudaDeviceSynchronize();
-
-	waitKey(0);
-
-}
-*/
-
 ImageList* Average(Mat img, ImageList* imList, int x) {
 	float ratio = (float)img.cols / (float)img.rows;
 	int yBlocks = ceil(x / ratio);
@@ -197,24 +175,24 @@ ImageList* Average(Mat img, ImageList* imList, int x) {
 	unsigned char* dImage;
 	int size = img.rows * img.step;
 
-	cudaMalloc<unsigned char>(&dImage, size);
-	cudaMemcpy(dImage, img.ptr(), size, cudaMemcpyHostToDevice); //aloca e copia a imagem para gpu
+	SAFE_CALL(cudaMalloc<unsigned char>(&dImage, size), CUDA_MALLOC);
+	SAFE_CALL(cudaMemcpy(dImage, img.ptr(), size, cudaMemcpyHostToDevice), CUDA_HOST_DEVICE); //aloca e copia a imagem para gpu
 
 	ImageData* imData;
-	cudaMalloc<ImageData>(&imData, sizeof(ImageData) * imList->n);
-	cudaMemcpy(imData, imList->image, sizeof(ImageData) * imList->n, cudaMemcpyHostToDevice); //aloca e copia o cache das imagens
+	SAFE_CALL(cudaMalloc<ImageData>(&imData, sizeof(ImageData) * imList->n), CUDA_MALLOC);
+	SAFE_CALL(cudaMemcpy(imData, imList->image, sizeof(ImageData) * imList->n, cudaMemcpyHostToDevice), CUDA_HOST_DEVICE); //aloca e copia o cache das imagens
 
 	ImageData* outData;
-	cudaMalloc<ImageData>(&outData, sizeof(ImageData) * x * yBlocks); //aloca os dados de saida
+	SAFE_CALL(cudaMalloc<ImageData>(&outData, sizeof(ImageData) * x * yBlocks), CUDA_MALLOC); //aloca os dados de saida
 
 	AvrgKernel<<<blockKernel, 1>>>(dImage, img.step, img.cols, img.rows, imData, imList->n, outData);
 
-	cudaDeviceSynchronize();
+	SAFE_CALL(cudaDeviceSynchronize(), "Kernel launch");
 
 	ImageData* hostData;
 	hostData = (ImageData*)malloc(sizeof(ImageData) * x * yBlocks);
 
-	cudaMemcpy(hostData, outData, sizeof(ImageData) * x * yBlocks, cudaMemcpyDeviceToHost); // copia os dados para o host
+	SAFE_CALL(cudaMemcpy(hostData, outData, sizeof(ImageData) * x * yBlocks, cudaMemcpyDeviceToHost), CUDA_DEVICE_HOST); // copia os dados para o host
 
 	cudaFree(outData);
 	cudaFree(imData);
@@ -238,13 +216,13 @@ void GenerateImage(ImageList* structure, ImageList* cache, int x, dim3 resDim,di
 
 	ImageData *devData;
 
-	cudaMalloc<ImageData>(&devData, sizeof(ImageData) * structure->n);
-	cudaMemcpy(devData, structure->image, sizeof(ImageData) * structure->n, cudaMemcpyHostToDevice);
+	SAFE_CALL(cudaMalloc<ImageData>(&devData, sizeof(ImageData) * structure->n), CUDA_MALLOC);
+	SAFE_CALL(cudaMemcpy(devData, structure->image, sizeof(ImageData) * structure->n, cudaMemcpyHostToDevice), CUDA_HOST_DEVICE);
 
 	//Mat finalImage(x, y, CV_8UC3);
 	unsigned char* dFinalImage;
 
-	int sizeFinal = finalImage->rows * finalImage->step;
+	unsigned int sizeFinal = finalImage->rows * finalImage->step;
 
 	cudaMalloc<unsigned char>(&dFinalImage, sizeFinal);
 
@@ -289,116 +267,7 @@ void GenerateImage(ImageList* structure, ImageList* cache, int x, dim3 resDim,di
 		ToGrayScaleKernel<<<blockKernel, threads>>>(dFinalImage, finalImage->step, finalImageSize);
 	}
 
-	cudaMemcpy(finalImage->ptr(), dFinalImage, sizeFinal, cudaMemcpyDeviceToHost);
+	SAFE_CALL(cudaMemcpy(finalImage->ptr(), dFinalImage,sizeFinal, cudaMemcpyDeviceToHost), "Image generation");
 
 	return;
 }
-
-/*void bestImageTest() {
-	clock_t begin = clock();
-
-	Mat image = imread("D:\\igora\\Downloads\\Screenshot_20210318-082317.jpg");
-	unsigned char* dImage;
-
-	int size = image.rows * image.step;
-
-	cudaMalloc<unsigned char>(&dImage, size);
-	cudaMemcpy(dImage, image.ptr(), size, cudaMemcpyHostToDevice);
-
-	dim3 block(200, 200);
-	
-	int blockWidth = image.cols / block.x;
-	int blockHeight = image.rows / block.y;
-
-	//ImageList* imgList = processImage("D:\\igora\\Documents\\Code\\Photomosaic\\images");
-	//saveCache(imgList);
-	ImageList* imgList = readCache();
-	ImageData* imgData;
-
-	cudaMalloc<ImageData>(&imgData, sizeof(ImageData) * imgList->n);
-	cudaMemcpy(imgData, imgList->image, sizeof(ImageData) * imgList->n, cudaMemcpyHostToDevice);
-
-	ImageData* out;
-	ImageData* outDevData;
-
-	cudaMalloc<ImageData>(&outDevData, sizeof(ImageData) * block.x * block.y);
-
-	out = (ImageData*)malloc(sizeof(ImageData) * block.x * block.y);
-
-	printf("calculando valores...\n");
-
-	AvrgKernel<<<block, 1>>>(dImage, image.step, image.cols, image.rows, imgData, imgList->n, outDevData);
-
-	cudaDeviceSynchronize();
-
-	cudaMemcpy(out, outDevData, sizeof(ImageData) * block.x * block.y, cudaMemcpyDeviceToHost);
-
-	//------------------------------------------------------
-	//Leitura das imagens e distribuição
-
-	int quantBlock = block.x * block.y;
-	unsigned char** imgArray;
-	imgArray = (unsigned char**)malloc(sizeof(char*) * quantBlock);
-	
-	set<int> usedImg;
-
-	dim3 outSize(50, 50);
-
-	dim3 outImageSize(outSize.x * block.x, outSize.y * block.y);
-
-	Mat outImg(outImageSize.y, outImageSize.x, CV_8UC3);
-	unsigned char* outDev;
-	int outImgSize = outImg.step * outImg.rows;
-
-	cudaMalloc<unsigned char>(&outDev, outImgSize);
-
-	printf("Preenchendo a imagem...\n");
-
-	for (int i = 0; i < quantBlock; i++) {
-		if (usedImg.find(out[i].hex) == usedImg.end()) {
-			Mat imgAux = imread(out[i].name);
-			int size = imgAux.rows * imgAux.step;
-
-			cudaMalloc<unsigned char>(&imgArray[i], size);
-			cudaMemcpy(imgArray[i], imgAux.ptr(), size, cudaMemcpyHostToDevice);
-
-			dim3 blockImgSize(imgAux.cols, imgAux.rows);
-
-			dim3 threads(MAX, MAX);
-
-			dim3 blockKernel(outImageSize.x / MAX, outImageSize.y / MAX);
-
-			blockKernel.x++;
-			blockKernel.y++;
-
-			FillImageKernel << <blockKernel, threads>> > (outDev, outImg.step, outSize, outDevData, block, blockImgSize, imgArray[i], imgAux.step, out[i].hex);
-
-			usedImg.insert(out[i].hex);
-		}
-
-			
-	}
-
-
-	cudaDeviceSynchronize();
-
-	printf("salvando imagem...\n");
-
-	cudaMemcpy(outImg.ptr(), outDev, outImgSize, cudaMemcpyDeviceToHost);
-
-	
-	namedWindow("vai");
-	imshow("vai", outImg);
-	
-
-	imwrite("D:\\igora\\Pictures\\PhotoCuda\\teste.jpg", outImg);
-
-	clock_t end = clock();
-
-	double timeSpent = (double)(end - begin) / CLOCKS_PER_SEC;
-
-	printf("tempo gasto: %.2fs\n", timeSpent);
-
-	waitKey();
-} 
-*/

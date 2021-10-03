@@ -88,22 +88,32 @@ int main(int argc, char* argv[]) {
 
 	GenerateImage(structure, imList, x, resolution, finalSize, &finalImage, grayscale, progressBar);
 
+	auto stop = high_resolution_clock::now();
+
+	auto durationGeneration = duration_cast<milliseconds>(stop - start);
+
 	string outDir = program.get<string>("--output");
+
+	printf("Salvando imagem...\n");
+
+	start = high_resolution_clock::now();
 
 	imwrite(outDir, finalImage);
 
+	stop = high_resolution_clock::now();
+
+	auto durationSaving = duration_cast<milliseconds>(stop - start);
+
+	float secDurationSaving = (float)durationSaving.count() / 1000.0;
+
 	ShellExecute(NULL, "open", outDir.c_str(), NULL, NULL, SW_SHOW);
 
-	auto stop = high_resolution_clock::now();
-
-	auto duration = duration_cast<milliseconds>(stop - start);
-
-	float secDuration = (float)duration.count() / 1000.0;
+	float secDurationGeneration = (float)durationGeneration.count() / 1000.0;
 
 	inputImage.release();
 	finalImage.release();
 
-	printf("Execução finalizada em: %.2f segundos\n",secDuration);
+	printf("Imagem gerada em: %.2fs\nImagem salva em: %.2fs\nTempo total: %.2f\n",secDurationGeneration, secDurationSaving, secDurationGeneration + secDurationSaving);
 
 	system("pause");
 
