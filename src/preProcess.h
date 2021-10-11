@@ -1,4 +1,7 @@
 #pragma once
+#include <Windows.h>
+#include <shellapi.h>
+
 #include <string>
 
 using namespace std;
@@ -26,3 +29,5 @@ bool saveCache(ImageList* imlist);
 void insertionSort(ImageList* imlist);
 
 ImageList* readCache();
+
+void start();

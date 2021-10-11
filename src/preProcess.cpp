@@ -10,14 +10,23 @@
 using namespace std;
 using namespace std::filesystem;
 
-const string meta = ".\\cache.dat";
+string cache = ".\\cache.dat";
+
+void start() {
+	char buffer[MAX_PATH];
+	GetModuleFileNameA(NULL, buffer, MAX_PATH);
+	string::size_type pos = string(buffer).find_last_of("\\/");
+
+	cache = string(buffer).substr(0, pos);
+	cache.append("\\cache.dat");
+}
 
 ImageList* readImages(string path) {
 	int count = 0;
 
 	for (const auto & file : directory_iterator(path)) {
 		string at = file.path().string();
-		if (at.find(meta) == string::npos) {
+		if (at.find(cache) == string::npos) {
 			count++;
 		}
 	}
@@ -37,7 +46,7 @@ ImageList* readImages(string path) {
 
 	for (const auto& file : directory_iterator(path)) {
 		string at = file.path().string();
-		if (at.find(meta) == string::npos) {
+		if (at.find(cache) == string::npos) {
 			strcpy(imList->image[imList->n].name, at.c_str());
 			imList->image[imList->n++].hex = 0;
 		}
@@ -71,7 +80,7 @@ ImageList* processImage(string path) {
 }
 
 bool saveCache(ImageList* imlist) {
-	FILE* f = fopen(meta.c_str(), "wb+");
+	FILE* f = fopen(cache.c_str(), "wb+");
 
 	if (f == NULL) {
 		return false;
@@ -86,7 +95,7 @@ bool saveCache(ImageList* imlist) {
 }
 
 ImageList* readCache() {
-	FILE* f = fopen(meta.c_str(), "rb");
+	FILE* f = fopen(cache.c_str(), "rb");
 	int n;
 
 	if (f == NULL) {

@@ -1,6 +1,3 @@
-#include <Windows.h>
-#include <shellapi.h>
-
 #include "preProcess.h"
 #include "kernel.h"
 #include <argparse/argparse.hpp>
@@ -24,6 +21,7 @@ void progressBar(int n, int max);
 
 int main(int argc, char* argv[]) {
 	setlocale(LC_ALL, "");
+	start();
 
 	auto start = high_resolution_clock::now();
 
