@@ -51,6 +51,7 @@ Example:
 ```
 $ photomosaic.exe -i C:\images\example.png -o C:\images\exMosaic.png -q 100 -r 50 -u c:\imageSet\ -g
 ```
+OBS: In the first time you run the program you NEED to generate the cache
 
 ## ℹ️ Additional Info
 
